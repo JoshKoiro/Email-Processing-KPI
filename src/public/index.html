@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Tracking Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .chart-container {
+      height: 400px;
+      margin-bottom: 30px;
+    }
+    .stats-card {
+      margin-bottom: 20px;
+    }
+    .stats-value {
+      font-size: 2rem;
+      font-weight: bold;
+    }
+    .footer {
+      margin-top: 50px;
+      font-size: 0.8rem;
+      color: #6c757d;
+    }
+    .trend-indicator {
+      font-size: 1.2rem;
+      margin-left: 5px;
+    }
+    .trend-up {
+      color: #dc3545;
+    }
+    .trend-down {
+      color: #28a745;
+    }
+    .trend-neutral {
+      color: #6c757d;
+    }
+  </style>
+</head>
+<body>
+  <div class="container mt-4">
+    <h1>Email Tracking Dashboard</h1>
+    <p class="lead">Monitor your email processing efficiency</p>
+    
+    <div class="row mt-4">
+      <div class="col-md-6">
+        <div class="card stats-card">
+          <div class="card-body">
+            <h5 class="card-title">Emails Received Today</h5>
+            <p class="stats-value" id="currentEmailsReceived">-</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-6">
+        <div class="card stats-card">
+          <div class="card-body">
+            <h5 class="card-title">Current Inbox Count</h5>
+            <p class="stats-value" id="currentInboxCount">-</p>
+            <p class="card-text text-muted">Last checked: <span id="lastUpdated">-</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Emails Received Per Day</h5>
+            <div class="btn-group" role="group">
+              <button type="button" class="btn btn-sm btn-outline-secondary date-range" data-days="7">Week</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary date-range" data-days="30">Month</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary date-range" data-days="90">Quarter</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary date-range" data-days="all">All</button>
+            </div>
+          </div>
+          <div class="card-body chart-container">
+            <canvas id="emailsReceivedChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h5>Inbox Count at Midnight</h5>
+          </div>
+          <div class="card-body chart-container">
+            <canvas id="inboxCountChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="row mt-4">
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h5>Email Processing Efficiency</h5>
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <strong>Weekly Processing Rate:</strong>
+              <span id="weeklyProcessingRate">Calculating...</span>
+            </div>
+            <div class="mb-3">
+              <strong>Average Daily Inbox Reduction:</strong>
+              <span id="avgInboxReduction">Calculating...</span>
+            </div>
+            <button id="refreshButton" class="btn btn-primary">Refresh Data</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">
+            <h5>Actions</h5>
+          </div>
+          <div class="card-body">
+            <button id="updateDailyButton" class="btn btn-outline-primary mb-2">Update Daily Stats Now</button>
+            <button id="updateMidnightButton" class="btn btn-outline-secondary mb-2">Update Midnight Count Now</button>
+            <p class="mt-3 text-muted">Stats are automatically updated hourly. The midnight inbox count is updated at 12:00 AM.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="footer">
+      <p>Email Tracking Dashboard v1.0.0 - Data is stored locally in a JSON file.</p>
+    </div>
+  </div>
+  
+  <script>
+    // Chart instances
+    let emailsReceivedChart = null;
+    let inboxCountChart = null;
+    
+    // Date range
+    let dateRange = 7;
+    
+    // Initialize charts
+    function initCharts() {
+      // Emails Received Chart
+      const emailsReceivedCtx = document.getElementById('emailsReceivedChart').getContext('2d');
+      emailsReceivedChart = new Chart(emailsReceivedCtx, {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Emails Received',
+            data: [],
+            backgroundColor: 'rgba(54, 162, 235, 0.7)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+      
+      // Inbox Count Chart
+      const inboxCountCtx = document.getElementById('inboxCountChart').getContext('2d');
+      inboxCountChart = new Chart(inboxCountCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Inbox Count at Midnight',
+            data: [],
+            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+            borderColor: 'rgba(255, 99, 132, 1)',
+            borderWidth: 2,
+            tension: 0.2,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    }
+    
+    // Load and display email stats
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const data = await response.json();
+        
+        if (data.success) {
+          updateCharts(data.data);
+          calculateEfficiencyMetrics(data.data);
+        } else {
+          console.error('Failed to load stats:', data.error);
+        }
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    }
+    
+    // Load current counts
+    async function loadCurrentCounts() {
+      try {
+        const response = await fetch('/api/current');
+        const data = await response.json();
+        
+        if (data.success) {
+          document.getElementById('currentEmailsReceived').textContent = data.data.emailsReceived;
+          document.getElementById('currentInboxCount').textContent = data.data.inboxCount;
+          document.getElementById('lastUpdated').textContent = new Date(data.data.timestamp).toLocaleString();
+        } else {
+          console.error('Failed to load current counts:', data.error);
+        }
+      } catch (error) {
+        console.error('Error loading current counts:', error);
+      }
+    }
+    
+    // Update charts with data
+    function updateCharts(stats) {
+      // Filter by date range if not "all"
+      let filteredStats = stats;
+      if (dateRange !== 'all') {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - dateRange);
+        filteredStats = stats.filter(stat => new Date(stat.date) >= cutoffDate);
+      }
+      
+      // Sort by date (oldest first)
+      filteredStats.sort((a, b) => new Date(a.date) - new Date(b.date));
+      
+      // Extract dates, emails received, and inbox counts
+      const dates = filteredStats.map(stat => stat.date);
+      const emailsReceived = filteredStats.map(stat => stat.emailsReceived || 0);
+      const inboxCounts = filteredStats.map(stat => stat.inboxCountAtMidnight || 0);
+      
+      // Update emails received chart
+      emailsReceivedChart.data.labels = dates;
+      emailsReceivedChart.data.datasets[0].data = emailsReceived;
+      emailsReceivedChart.update();
+      
+      // Update inbox count chart
+      inboxCountChart.data.labels = dates;
+      inboxCountChart.data.datasets[0].data = inboxCounts;
+      inboxCountChart.update();
+    }
+    
+    // Calculate efficiency metrics
+    function calculateEfficiencyMetrics(stats) {
+      if (stats.length < 2) {
+        document.getElementById('weeklyProcessingRate').textContent = 'Need more data';
+        document.getElementById('avgInboxReduction').textContent = 'Need more data';
+        return;
+      }
+      
+      // Sort by date (newest first)
+      const sortedStats = [...stats].sort((a, b) => new Date(b.date) - new Date(a.date));
+      
+      // Calculate weekly processing rate
+      let weeklyReceived = 0;
+      let weeklyReduction = 0;
+      
+      // Get the last 7 days of data
+      const last7Days = sortedStats.slice(0, 7);
+      
+      if (last7Days.length > 0) {
+        // Sum up emails received
+        weeklyReceived = last7Days.reduce((sum, day) => sum + (day.emailsReceived || 0), 0);
+        
+        // Calculate inbox reduction if we have enough data
+        if (last7Days.length >= 2 && 
+            last7Days[0].inboxCountAtMidnight !== undefined && 
+            last7Days[last7Days.length - 1].inboxCountAtMidnight !== undefined) {
+          
+          const mostRecentCount = last7Days[0].inboxCountAtMidnight;
+          const oldestCount = last7Days[last7Days.length - 1].inboxCountAtMidnight;
+          
+          weeklyReduction = oldestCount - mostRecentCount;
+        }
+        
+        // Calculate processing rate as percentage
+        let processingRate = 0;
+        if (weeklyReceived > 0) {
+          processingRate = ((weeklyReceived + weeklyReduction) / weeklyReceived) * 100;
+        }
+        
+        document.getElementById('weeklyProcessingRate').textContent = 
+          `${processingRate.toFixed(1)}% (${weeklyReceived + weeklyReduction} processed / ${weeklyReceived} received)`;
+        
+        // Calculate average daily inbox reduction
+        const avgDailyReduction = weeklyReduction / last7Days.length;
+        
+        // Create appropriate trend indicator
+        let trendIndicator = '';
+        if (avgDailyReduction > 0) {
+          trendIndicator = '<span class="trend-indicator trend-down">▼</span>';
+        } else if (avgDailyReduction < 0) {
+          trendIndicator = '<span class="trend-indicator trend-up">▲</span>';
+        } else {
+          trendIndicator = '<span class="trend-indicator trend-neutral">◆</span>';
+        }
+        
+        document.getElementById('avgInboxReduction').innerHTML = 
+          `${Math.abs(avgDailyReduction).toFixed(1)} emails/day ${trendIndicator}`;
+      } else {
+        document.getElementById('weeklyProcessingRate').textContent = 'Need more data';
+        document.getElementById('avgInboxReduction').textContent = 'Need more data';
+      }
+    }
+    
+    // Manual update
+    async function manualUpdate(type) {
+      try {
+        const response = await fetch('/api/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ type })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          // Reload all data
+          await Promise.all([loadStats(), loadCurrentCounts()]);
+          alert(`${type === 'midnight' ? 'Midnight inbox count' : 'Daily email stats'} updated successfully`);
+        } else {
+          alert(`Failed to update: ${data.error}`);
+        }
+      } catch (error) {
+        console.error('Error during manual update:', error);
+        alert('Failed to update stats. See console for details.');
+      }
+    }
+    
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initialize charts
+      initCharts();
+      
+      // Load stats and current counts
+      loadStats();
+      loadCurrentCounts();
+      
+      // Set up refresh button
+      document.getElementById('refreshButton').addEventListener('click', () => {
+        loadStats();
+        loadCurrentCounts();
+      });
+      
+      // Set up date range buttons
+      document.querySelectorAll('.date-range').forEach(button => {
+        button.addEventListener('click', (event) => {
+          // Update active button
+          document.querySelectorAll('.date-range').forEach(btn => {
+            btn.classList.remove('active', 'btn-secondary');
+            btn.classList.add('btn-outline-secondary');
+          });
+          event.target.classList.remove('btn-outline-secondary');
+          event.target.classList.add('active', 'btn-secondary');
+          
+          // Update date range and reload stats
+          dateRange = event.target.dataset.days;
+          loadStats();
+        });
+      });
+      
+      // Set default date range
+      document.querySelector('.date-range[data-days="7"]').click();
+      
+      // Set up manual update buttons
+      document.getElementById('updateDailyButton').addEventListener('click', () => {
+        manualUpdate('daily');
+      });
+      
+      document.getElementById('updateMidnightButton').addEventListener('click', () => {
+        manualUpdate('midnight');
+      });
+      
+      // Auto-refresh every 5 minutes
+      setInterval(() => {
+        loadStats();
+        loadCurrentCounts();
+      }, 5 * 60 * 1000);
+    });
+  </script>
+</body>
+</html>

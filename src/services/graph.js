@@ -201,27 +201,67 @@ const makeGraphRequest = async (endpoint, params = {}) => {
   }
 };
 
-// Get received emails count for today
+// Get received emails count for today across all folders
 const getReceivedEmailsCount = async () => {
   try {
+    // Ensure we have a valid token
+    await ensureValidToken();
+    
+    // Initialize client if needed
+    if (!graphClient) {
+      await initGraphClient();
+    }
+    
     // Get today's date in ISO format (start of day)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayIso = today.toISOString();
     
-    // Query for emails received today
-    const response = await graphClient.api('/me/mailFolders/inbox/messages')
+    console.log(`Getting emails received since ${todayIso}`);
+    
+    // Query for all emails received today across all folders
+    // This uses the /me/messages endpoint which searches across all folders
+    const response = await graphClient.api('/me/messages')
       .filter(`receivedDateTime ge ${todayIso}`)
       .count(true)
+      .top(999) // Adding top parameter to handle pagination if needed
       .get();
     
     // Extract count from response
     const count = response['@odata.count'] || 0;
     
-    console.log(`Received emails count for today: ${count}`);
+    console.log(`Received emails count for today across all folders: ${count}`);
     return count;
   } catch (error) {
     console.error('Error getting received emails count:', error);
+    
+    // Check if error is due to authentication
+    if (error.statusCode === 401) {
+      console.log('Authentication error, refreshing token and retrying...');
+      
+      // Refresh token and client
+      await refreshGraphClient();
+      
+      // Retry request once
+      if (graphClient) {
+        try {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const todayIso = today.toISOString();
+          
+          const response = await graphClient.api('/me/messages')
+            .filter(`receivedDateTime ge ${todayIso}`)
+            .count(true)
+            .top(999)
+            .get();
+          
+          return response['@odata.count'] || 0;
+        } catch (retryError) {
+          console.error('Error in retry attempt:', retryError);
+        }
+      }
+    }
+    
     return 0;
   }
 };

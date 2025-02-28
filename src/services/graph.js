@@ -1,4 +1,109 @@
-const { Client } = require('@microsoft/microsoft-graph-client');
+// Check token health by making a test API call
+const checkTokenHealth = async () => {
+  try {
+    // First, make sure we have an access token
+    if (!process.env.ACCESS_TOKEN) {
+      return {
+        valid: false,
+        reason: 'missing_token',
+        message: 'Access token is missing'
+      };
+    }
+    
+    // Basic validation of token format - should be a JWT
+    if (!process.env.ACCESS_TOKEN.match(/^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/)) {
+      return {
+        valid: false,
+        reason: 'invalid_token_format',
+        message: 'Access token format is invalid (not a valid JWT)'
+      };
+    }
+    
+    // Initialize the client if needed
+    try {
+      if (!graphClient) {
+        await initGraphClient();
+      }
+      
+      // If we're here, the initialization worked, now make an actual API call
+      try {
+        // Make a simple API call to test the token
+        // We'll use the /me endpoint which requires minimal permissions
+        await graphClient.api('/me').select('displayName').get();
+        
+        // If we get here, the token is valid and working
+        return {
+          valid: true,
+          message: 'API token is working properly'
+        };
+      } catch (apiError) {
+        // Check if the error is related to authentication
+        if (apiError.statusCode === 401) {
+          // Try to refresh the token if we have a refresh token and endpoint
+          if (process.env.REFRESH_TOKEN && process.env.TOKEN_REFRESH_ENDPOINT) {
+            try {
+              const newToken = await refreshAccessToken();
+              
+              if (newToken) {
+                // Test the new token
+                try {
+                  await graphClient.api('/me').select('displayName').get();
+                  return {
+                    valid: true,
+                    message: 'API token was refreshed and is now working'
+                  };
+                } catch (retryError) {
+                  return {
+                    valid: false,
+                    reason: 'refresh_failed_validation',
+                    message: 'Token was refreshed but still failed validation'
+                  };
+                }
+              }
+            } catch (refreshError) {
+              return {
+                valid: false,
+                reason: 'refresh_failed',
+                message: 'Token refresh attempt failed: ' + refreshError.message
+              };
+            }
+          }
+          
+          return {
+            valid: false,
+            reason: 'unauthorized',
+            message: 'API token is invalid or has insufficient permissions'
+          };
+        } else if (apiError.statusCode === 403) {
+          return {
+            valid: false,
+            reason: 'forbidden',
+            message: 'API token lacks necessary permissions'
+          };
+        } else {
+          return {
+            valid: false,
+            reason: 'api_error',
+            message: `API error: ${apiError.message || 'Unknown API error'}`
+          };
+        }
+      }
+    } catch (clientInitError) {
+      return {
+        valid: false,
+        reason: 'client_init_error',
+        message: `Failed to initialize Graph client: ${clientInitError.message || 'Unknown error'}`
+      };
+    }
+  } catch (error) {
+    console.error('Error checking token health:', error);
+    return {
+      valid: false,
+      reason: 'check_error',
+      message: error.message || 'Unknown error checking token health'
+    };
+  }
+};const { Client } = require('@microsoft/microsoft-graph-client');
 const fs = require('fs').promises;
 const path = require('path');
 const { saveEmailStats } = require('./storage');
@@ -62,39 +167,55 @@ const refreshAccessToken = async () => {
     const refreshToken = process.env.REFRESH_TOKEN;
     
     if (!refreshToken) {
-      throw new Error('No refresh token available');
+      console.log('No refresh token available, skipping refresh');
+      return null;
     }
+    
+    // Get refresh endpoint from environment or use default
+    const refreshEndpoint = process.env.TOKEN_REFRESH_ENDPOINT;
+    
+    if (!refreshEndpoint) {
+      console.log('No token refresh endpoint configured, skipping refresh');
+      return null;
+    }
+    
+    console.log(`Attempting to refresh token using endpoint: ${refreshEndpoint}`);
     
     // This function assumes you have a token refresh endpoint
     // Customize this based on your token refresh mechanism
-    const response = await fetch('https://your-token-refresh-endpoint', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      }),
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to refresh token: ${response.status} ${response.statusText}`);
+    try {
+      const response = await fetch(refreshEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to refresh token: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Update tokens in .env file
+      await updateTokenInEnvFile(
+        data.access_token,
+        data.refresh_token || refreshToken,
+        data.expires_in || 3600
+      );
+      
+      console.log('Access token refreshed successfully');
+      return data.access_token;
+    } catch (fetchError) {
+      console.error('Error refreshing access token:', fetchError);
+      return null;
     }
-    
-    const data = await response.json();
-    
-    // Update tokens in .env file
-    await updateTokenInEnvFile(
-      data.access_token,
-      data.refresh_token || refreshToken,
-      data.expires_in || 3600
-    );
-    
-    console.log('Access token refreshed successfully');
-    return data.access_token;
   } catch (error) {
-    console.error('Error refreshing access token:', error);
+    console.error('Error in refresh token process:', error);
     return null;
   }
 };
@@ -102,27 +223,23 @@ const refreshAccessToken = async () => {
 // Check if token is expired and refresh if needed
 const ensureValidToken = async () => {
   try {
-    // If we don't have expiration time in memory, check from environment
-    if (!tokenExpirationTime && process.env.TOKEN_EXPIRY) {
-      tokenExpirationTime = new Date(process.env.TOKEN_EXPIRY);
+    const healthStatus = await checkTokenHealth();
+    
+    if (healthStatus.valid) {
+      return process.env.ACCESS_TOKEN;
     }
     
-    const now = new Date();
-    
-    // Check if token is expired or about to expire
-    if (!tokenExpirationTime || now >= tokenExpirationTime) {
-      console.log('Access token expired or about to expire, refreshing...');
+    // If it's not valid but we have a refresh token, try to refresh
+    if (!healthStatus.valid && process.env.REFRESH_TOKEN) {
       const newToken = await refreshAccessToken();
       
-      if (!newToken) {
-        throw new Error('Failed to refresh access token');
+      if (newToken) {
+        process.env.ACCESS_TOKEN = newToken;
+        return newToken;
       }
-      
-      process.env.ACCESS_TOKEN = newToken;
-      return newToken;
     }
     
-    return process.env.ACCESS_TOKEN;
+    return null;
   } catch (error) {
     console.error('Error ensuring valid token:', error);
     return null;
@@ -429,5 +546,6 @@ module.exports = {
   updateDailyEmailStats,
   updateMidnightInboxCount,
   ensureValidToken,
+  checkTokenHealth,
   updateTokenInEnvFile
 };

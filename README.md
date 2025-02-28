@@ -1,5 +1,7 @@
 # Email-Processing-KPI
 
+# Email Tracker
+
 A Node.js application that tracks email metrics using the Microsoft Graph API to help measure email management efficiency.
 
 ## Features
@@ -49,10 +51,22 @@ Edit the `.env` file with your access token:
 ACCESS_TOKEN=your-access-token-here
 REFRESH_TOKEN=your-refresh-token-here-if-available
 TOKEN_EXPIRY=2025-02-28T12:00:00.000Z
+
+# Optional token refresh endpoint
+# TOKEN_REFRESH_ENDPOINT=https://your-token-refresh-endpoint
+
 PORT=3000
 ```
 
 Alternatively, you can leave the `.env` file empty and use the web interface to enter your access token after starting the application.
+
+### Token Refresh Configuration
+
+If you have a token refresh service:
+
+1. Set your refresh token in the `REFRESH_TOKEN` variable
+2. Configure the `TOKEN_REFRESH_ENDPOINT` to point to your token refresh service
+3. The system will automatically attempt to refresh expired tokens
 
 ### 4. Build and start the Docker container
 
@@ -101,9 +115,23 @@ You can modify the scheduled job timing by editing the cron expressions in `src/
 
 - Check the container logs: `docker-compose logs`
 - Verify your Microsoft Graph API access token is valid and not expired
-- Check the token status in the web interface
+- Check the token status in the web interface or use the `/health/details` endpoint
+- Check the Docker container health status: `docker ps` (look for health status)
 - Ensure the access token has Mail.Read permissions
 - If using refresh tokens, ensure the token endpoint is configured correctly in the graph.js service file
+
+### Container Health Monitoring
+
+To check container health status with Docker:
+
+```bash
+docker inspect --format='{{.State.Health.Status}}' email-tracker
+```
+
+This will return one of the following statuses:
+- `starting` - Container is starting and health checks are initializing
+- `healthy` - Access token is valid and application is working correctly
+- `unhealthy` - Access token is invalid or expired
 
 ## License
 

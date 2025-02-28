@@ -4,6 +4,7 @@ const morgan = require('morgan');
 const cors = require('cors');
 const apiRoutes = require('./routes/api');
 const indexRoutes = require('./routes/index');
+const healthRoutes = require('./routes/health');
 const { initEnvWatcher } = require('./config/env');
 const { initScheduler } = require('./services/scheduler');
 
@@ -22,6 +23,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes
 app.use('/api', apiRoutes);
+app.use('/health', healthRoutes);
 app.use('/', indexRoutes);
 
 // Initialize environment variable watcher

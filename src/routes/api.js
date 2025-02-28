@@ -100,6 +100,14 @@ router.post('/token', async (req, res) => {
       });
     }
     
+    // Basic token format validation
+    if (!accessToken.match(/^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Access token appears to be invalid. It should be in JWT format (xxx.yyy.zzz)'
+      });
+    }
+    
     // Update token in .env file
     const success = await updateTokenInEnvFile(
       accessToken,
@@ -108,21 +116,49 @@ router.post('/token', async (req, res) => {
     );
     
     if (success) {
-      return res.json({ 
-        success: true, 
-        message: 'Token updated successfully' 
-      });
+      // Immediately test the token with a quick API call
+      try {
+        // Force a refresh of the Graph client with the new token
+        await refreshGraphClient();
+        
+        // Test with a simple API call to verify the token works
+        const { checkTokenHealth } = require('../services/graph');
+        const healthStatus = await checkTokenHealth();
+        
+        if (healthStatus.valid) {
+          return res.json({ 
+            success: true, 
+            message: 'Token updated successfully and is working properly',
+            apiStatus: 'healthy'
+          });
+        } else {
+          return res.json({
+            success: true, // Still return success because we updated the token
+            message: 'Token was updated, but API test failed: ' + (healthStatus.message || 'Unknown reason'),
+            apiStatus: 'unhealthy',
+            reason: healthStatus.reason
+          });
+        }
+      } catch (apiError) {
+        console.error('Error testing new token:', apiError);
+        return res.json({
+          success: true, // Still return success because we updated the token
+          message: 'Token was updated, but API test failed',
+          apiStatus: 'unhealthy',
+          error: apiError.message
+        });
+      }
     } else {
       return res.status(500).json({ 
         success: false, 
-        error: 'Failed to update token' 
+        error: 'Failed to update token in configuration' 
       });
     }
   } catch (error) {
     console.error('Error updating token:', error);
     return res.status(500).json({ 
       success: false, 
-      error: 'Failed to update token' 
+      error: 'Server error: ' + error.message 
     });
   }
 });

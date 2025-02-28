@@ -266,21 +266,104 @@ const getReceivedEmailsCount = async () => {
   }
 };
 
-// Get current inbox count
+// Get current inbox count (excluding flagged items)
 const getInboxCount = async () => {
   try {
-    // Query for total inbox count
-    const response = await graphClient.api('/me/mailFolders/inbox')
-      .select('totalItemCount')
+    // Ensure we have a valid token
+    await ensureValidToken();
+    
+    // Initialize client if needed
+    if (!graphClient) {
+      await initGraphClient();
+    }
+    
+    // Query for unflagged emails in inbox
+    const response = await graphClient.api('/me/mailFolders/inbox/messages')
+      .filter('flag/flagStatus ne \'flagged\'')
+      .count(true)
       .get();
     
     // Extract count from response
-    const count = response.totalItemCount || 0;
+    const count = response['@odata.count'] || 0;
     
-    console.log(`Current inbox count: ${count}`);
+    console.log(`Current inbox count (excluding flagged items): ${count}`);
     return count;
   } catch (error) {
     console.error('Error getting inbox count:', error);
+    
+    // Check if error is due to authentication
+    if (error.statusCode === 401) {
+      console.log('Authentication error, refreshing token and retrying...');
+      
+      // Refresh token and client
+      await refreshGraphClient();
+      
+      // Retry request once
+      if (graphClient) {
+        try {
+          const response = await graphClient.api('/me/mailFolders/inbox/messages')
+            .filter('flag/flagStatus ne \'flagged\'')
+            .count(true)
+            .get();
+          
+          return response['@odata.count'] || 0;
+        } catch (retryError) {
+          console.error('Error in retry attempt:', retryError);
+        }
+      }
+    }
+    
+    return 0;
+  }
+};
+
+// Get current tasks count (flagged emails in inbox)
+const getTasksCount = async () => {
+  try {
+    // Ensure we have a valid token
+    await ensureValidToken();
+    
+    // Initialize client if needed
+    if (!graphClient) {
+      await initGraphClient();
+    }
+    
+    // Query for flagged emails in inbox
+    const response = await graphClient.api('/me/mailFolders/inbox/messages')
+      .filter('flag/flagStatus eq \'flagged\'')
+      .count(true)
+      .get();
+    
+    // Extract count from response
+    const count = response['@odata.count'] || 0;
+    
+    console.log(`Current tasks count (flagged emails): ${count}`);
+    return count;
+  } catch (error) {
+    console.error('Error getting tasks count:', error);
+    
+    // Check if error is due to authentication
+    if (error.statusCode === 401) {
+      console.log('Authentication error, refreshing token and retrying...');
+      
+      // Refresh token and client
+      await refreshGraphClient();
+      
+      // Retry request once
+      if (graphClient) {
+        try {
+          const response = await graphClient.api('/me/mailFolders/inbox/messages')
+            .filter('flag/flagStatus eq \'flagged\'')
+            .count(true)
+            .get();
+          
+          return response['@odata.count'] || 0;
+        } catch (retryError) {
+          console.error('Error in retry attempt:', retryError);
+        }
+      }
+    }
+    
     return 0;
   }
 };
@@ -315,20 +398,24 @@ const updateMidnightInboxCount = async () => {
     // Ensure we have a valid token
     await ensureValidToken();
     
-    // Get current inbox count
+    // Get current inbox count (excluding flagged items)
     const inboxCount = await getInboxCount();
+    
+    // Get current tasks count (flagged emails)
+    const tasksCount = await getTasksCount();
     
     // Save to storage
     await saveEmailStats({
       date: new Date().toISOString().split('T')[0],
       inboxCountAtMidnight: inboxCount,
+      tasksCountAtMidnight: tasksCount,
       type: 'midnight',
     });
     
-    console.log('Midnight inbox count updated successfully');
+    console.log('Midnight counts updated successfully');
     return true;
   } catch (error) {
-    console.error('Error updating midnight inbox count:', error);
+    console.error('Error updating midnight counts:', error);
     return false;
   }
 };
@@ -338,6 +425,7 @@ module.exports = {
   refreshGraphClient,
   getReceivedEmailsCount,
   getInboxCount,
+  getTasksCount,
   updateDailyEmailStats,
   updateMidnightInboxCount,
   ensureValidToken,

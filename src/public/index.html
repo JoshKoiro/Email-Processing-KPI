@@ -36,6 +36,9 @@
     .trend-neutral {
       color: #6c757d;
     }
+    .tasks-count {
+      color: #fd7e14;
+    }
   </style>
 </head>
 <body>
@@ -44,7 +47,7 @@
     <p class="lead">Monitor your email processing efficiency</p>
     
     <div class="row mt-4">
-      <div class="col-md-6">
+      <div class="col-md-4">
         <div class="card stats-card">
           <div class="card-body">
             <h5 class="card-title">Emails Received Today</h5>
@@ -53,11 +56,22 @@
         </div>
       </div>
       
-      <div class="col-md-6">
+      <div class="col-md-4">
         <div class="card stats-card">
           <div class="card-body">
             <h5 class="card-title">Current Inbox Count</h5>
             <p class="stats-value" id="currentInboxCount">-</p>
+            <small class="text-muted">(excludes flagged items)</small>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col-md-4">
+        <div class="card stats-card">
+          <div class="card-body">
+            <h5 class="card-title">Email Tasks</h5>
+            <p class="stats-value" id="currentTasksCount">-</p>
+            <small class="text-muted">(flagged emails)</small>
             <p class="card-text text-muted">Last checked: <span id="lastUpdated">-</span></p>
           </div>
         </div>
@@ -86,8 +100,12 @@
     <div class="row mt-4">
       <div class="col-12">
         <div class="card">
-          <div class="card-header">
-            <h5>Inbox Count at Midnight</h5>
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Inbox and Tasks Count at Midnight</h5>
+            <small class="text-muted">
+              <span style="color: rgba(54, 162, 235, 1);">■</span> Regular emails
+              <span style="color: rgba(255, 159, 64, 1); margin-left: 10px;">■</span> Flagged emails (tasks)
+            </small>
           </div>
           <div class="card-body chart-container">
             <canvas id="inboxCountChart"></canvas>
@@ -210,15 +228,26 @@
         type: 'line',
         data: {
           labels: [],
-          datasets: [{
-            label: 'Inbox Count at Midnight',
-            data: [],
-            backgroundColor: 'rgba(255, 99, 132, 0.2)',
-            borderColor: 'rgba(255, 99, 132, 1)',
-            borderWidth: 2,
-            tension: 0.2,
-            fill: true
-          }]
+          datasets: [
+            {
+              label: 'Inbox Count',
+              data: [],
+              backgroundColor: 'rgba(54, 162, 235, 0.2)',
+              borderColor: 'rgba(54, 162, 235, 1)',
+              borderWidth: 2,
+              tension: 0.2,
+              fill: true
+            },
+            {
+              label: 'Tasks Count',
+              data: [],
+              backgroundColor: 'rgba(255, 159, 64, 0.2)',
+              borderColor: 'rgba(255, 159, 64, 1)',
+              borderWidth: 2,
+              tension: 0.2,
+              fill: true
+            }
+          ]
         },
         options: {
           responsive: true,
@@ -258,6 +287,7 @@
         if (data.success) {
           document.getElementById('currentEmailsReceived').textContent = data.data.emailsReceived;
           document.getElementById('currentInboxCount').textContent = data.data.inboxCount;
+          document.getElementById('currentTasksCount').textContent = data.data.tasksCount;
           document.getElementById('lastUpdated').textContent = new Date(data.data.timestamp).toLocaleString();
         } else {
           console.error('Failed to load current counts:', data.error);
@@ -280,19 +310,21 @@
       // Sort by date (oldest first)
       filteredStats.sort((a, b) => new Date(a.date) - new Date(b.date));
       
-      // Extract dates, emails received, and inbox counts
+      // Extract dates, emails received, and counts
       const dates = filteredStats.map(stat => stat.date);
       const emailsReceived = filteredStats.map(stat => stat.emailsReceived || 0);
       const inboxCounts = filteredStats.map(stat => stat.inboxCountAtMidnight || 0);
+      const tasksCounts = filteredStats.map(stat => stat.tasksCountAtMidnight || 0);
       
       // Update emails received chart
       emailsReceivedChart.data.labels = dates;
       emailsReceivedChart.data.datasets[0].data = emailsReceived;
       emailsReceivedChart.update();
       
-      // Update inbox count chart
+      // Update inbox and tasks count chart
       inboxCountChart.data.labels = dates;
       inboxCountChart.data.datasets[0].data = inboxCounts;
+      inboxCountChart.data.datasets[1].data = tasksCounts;
       inboxCountChart.update();
     }
     
@@ -323,10 +355,18 @@
             last7Days[0].inboxCountAtMidnight !== undefined && 
             last7Days[last7Days.length - 1].inboxCountAtMidnight !== undefined) {
           
-          const mostRecentCount = last7Days[0].inboxCountAtMidnight;
-          const oldestCount = last7Days[last7Days.length - 1].inboxCountAtMidnight;
+          const mostRecentInbox = last7Days[0].inboxCountAtMidnight || 0;
+          const oldestInbox = last7Days[last7Days.length - 1].inboxCountAtMidnight || 0;
           
-          weeklyReduction = oldestCount - mostRecentCount;
+          // Include both inbox and task changes in reduction calculation
+          const mostRecentTasks = last7Days[0].tasksCountAtMidnight || 0;
+          const oldestTasks = last7Days[last7Days.length - 1].tasksCountAtMidnight || 0;
+          
+          // Total reduction is the reduction in inbox plus reduction in tasks
+          const inboxReduction = oldestInbox - mostRecentInbox;
+          const tasksReduction = oldestTasks - mostRecentTasks;
+          
+          weeklyReduction = inboxReduction + tasksReduction;
         }
         
         // Calculate processing rate as percentage
@@ -338,24 +378,78 @@
         document.getElementById('weeklyProcessingRate').textContent = 
           `${processingRate.toFixed(1)}% (${weeklyReceived + weeklyReduction} processed / ${weeklyReceived} received)`;
         
-        // Calculate average daily inbox reduction
-        const avgDailyReduction = weeklyReduction / last7Days.length;
+        // Calculate average daily inbox reduction (only regular inbox items)
+        let avgDailyInboxReduction = 0;
+        
+        if (last7Days.length >= 2 && 
+            last7Days[0].inboxCountAtMidnight !== undefined && 
+            last7Days[last7Days.length - 1].inboxCountAtMidnight !== undefined) {
+          
+          const mostRecentInbox = last7Days[0].inboxCountAtMidnight || 0;
+          const oldestInbox = last7Days[last7Days.length - 1].inboxCountAtMidnight || 0;
+          avgDailyInboxReduction = (oldestInbox - mostRecentInbox) / last7Days.length;
+        }
         
         // Create appropriate trend indicator
-        let trendIndicator = '';
-        if (avgDailyReduction > 0) {
-          trendIndicator = '<span class="trend-indicator trend-down">▼</span>';
-        } else if (avgDailyReduction < 0) {
-          trendIndicator = '<span class="trend-indicator trend-up">▲</span>';
+        let inboxTrendIndicator = '';
+        if (avgDailyInboxReduction > 0) {
+          inboxTrendIndicator = '<span class="trend-indicator trend-down">▼</span>';
+        } else if (avgDailyInboxReduction < 0) {
+          inboxTrendIndicator = '<span class="trend-indicator trend-up">▲</span>';
         } else {
-          trendIndicator = '<span class="trend-indicator trend-neutral">◆</span>';
+          inboxTrendIndicator = '<span class="trend-indicator trend-neutral">◆</span>';
         }
         
         document.getElementById('avgInboxReduction').innerHTML = 
-          `${Math.abs(avgDailyReduction).toFixed(1)} emails/day ${trendIndicator}`;
+          `${Math.abs(avgDailyInboxReduction).toFixed(1)} emails/day ${inboxTrendIndicator}`;
+          
+        // Add tasks metrics section if not already present
+        if (!document.getElementById('avgTasksReduction')) {
+          const tasksMetricDiv = document.createElement('div');
+          tasksMetricDiv.className = 'mb-3';
+          tasksMetricDiv.innerHTML = `
+            <strong>Average Daily Tasks Reduction:</strong>
+            <span id="avgTasksReduction">Calculating...</span>
+          `;
+          
+          // Insert after inbox reduction
+          const inboxReductionElement = document.getElementById('avgInboxReduction').parentNode;
+          inboxReductionElement.parentNode.insertBefore(tasksMetricDiv, inboxReductionElement.nextSibling);
+        }
+        
+        // Calculate average daily tasks reduction
+        let avgDailyTasksReduction = 0;
+        
+        if (last7Days.length >= 2 && 
+            last7Days[0].tasksCountAtMidnight !== undefined && 
+            last7Days[last7Days.length - 1].tasksCountAtMidnight !== undefined) {
+          
+          const mostRecentTasks = last7Days[0].tasksCountAtMidnight || 0;
+          const oldestTasks = last7Days[last7Days.length - 1].tasksCountAtMidnight || 0;
+          avgDailyTasksReduction = (oldestTasks - mostRecentTasks) / last7Days.length;
+        }
+        
+        // Create appropriate trend indicator for tasks
+        let tasksTrendIndicator = '';
+        if (avgDailyTasksReduction > 0) {
+          tasksTrendIndicator = '<span class="trend-indicator trend-down">▼</span>';
+        } else if (avgDailyTasksReduction < 0) {
+          tasksTrendIndicator = '<span class="trend-indicator trend-up">▲</span>';
+        } else {
+          tasksTrendIndicator = '<span class="trend-indicator trend-neutral">◆</span>';
+        }
+        
+        if (document.getElementById('avgTasksReduction')) {
+          document.getElementById('avgTasksReduction').innerHTML = 
+            `${Math.abs(avgDailyTasksReduction).toFixed(1)} tasks/day ${tasksTrendIndicator}`;
+        }
+        
       } else {
         document.getElementById('weeklyProcessingRate').textContent = 'Need more data';
         document.getElementById('avgInboxReduction').textContent = 'Need more data';
+        if (document.getElementById('avgTasksReduction')) {
+          document.getElementById('avgTasksReduction').textContent = 'Need more data';
+        }
       }
     }
     

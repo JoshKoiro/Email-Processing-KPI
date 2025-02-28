@@ -2,7 +2,8 @@ const express = require('express');
 const { getAllEmailStats } = require('../services/storage');
 const { 
   getReceivedEmailsCount, 
-  getInboxCount, 
+  getInboxCount,
+  getTasksCount,
   updateTokenInEnvFile,
   ensureValidToken 
 } = require('../services/graph');
@@ -23,9 +24,10 @@ router.get('/stats', async (req, res) => {
 // Get current counts
 router.get('/current', async (req, res) => {
   try {
-    const [emailsReceived, inboxCount] = await Promise.all([
+    const [emailsReceived, inboxCount, tasksCount] = await Promise.all([
       getReceivedEmailsCount(),
       getInboxCount(),
+      getTasksCount(),
     ]);
     
     res.json({
@@ -33,6 +35,7 @@ router.get('/current', async (req, res) => {
       data: {
         emailsReceived,
         inboxCount,
+        tasksCount,
         timestamp: new Date().toISOString(),
       },
     });
@@ -42,7 +45,7 @@ router.get('/current', async (req, res) => {
   }
 });
 
-// Manually trigger update
+    // Manually trigger update
 router.post('/update', async (req, res) => {
   try {
     const { type } = req.body;
@@ -51,15 +54,33 @@ router.post('/update', async (req, res) => {
     if (type === 'midnight') {
       const { updateMidnightInboxCount } = require('../services/graph');
       success = await updateMidnightInboxCount();
+      
+      if (success) {
+        res.json({ 
+          success: true, 
+          message: 'Manual update of midnight counts (inbox and tasks) successful' 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          error: 'Failed to update midnight counts' 
+        });
+      }
     } else {
       const { updateDailyEmailStats } = require('../services/graph');
       success = await updateDailyEmailStats();
-    }
-    
-    if (success) {
-      res.json({ success: true, message: `Manual update of ${type || 'daily'} stats successful` });
-    } else {
-      res.status(500).json({ success: false, error: 'Failed to update stats' });
+      
+      if (success) {
+        res.json({ 
+          success: true, 
+          message: 'Manual update of daily stats successful' 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          error: 'Failed to update daily stats' 
+        });
+      }
     }
   } catch (error) {
     console.error('Error during manual update:', error);

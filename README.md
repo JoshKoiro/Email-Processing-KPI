@@ -1,4 +1,5 @@
 # Email-Processing-KPI
+
 A Node.js application that tracks email metrics using the Microsoft Graph API to help measure email management efficiency.
 
 ## Features
@@ -13,10 +14,7 @@ A Node.js application that tracks email metrics using the Microsoft Graph API to
 ## Prerequisites
 
 - Docker and Docker Compose
-- Microsoft Graph API credentials:
-  - Tenant ID
-  - Client ID
-  - Client Secret
+- Microsoft Graph API access token with Mail.Read permissions
 
 ## Setup Instructions
 
@@ -27,13 +25,15 @@ git clone https://github.com/your-username/email-tracker.git
 cd email-tracker
 ```
 
-### 2. Register an application in Azure AD
+### 2. Get a Microsoft Graph API Access Token
 
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Navigate to Azure Active Directory > App registrations
-3. Create a new registration
-4. Grant permissions to Microsoft Graph API (Mail.Read)
-5. Create a client secret
+You'll need an access token with Mail.Read permissions for your Microsoft account. There are several ways to obtain this:
+
+1. Use the [Microsoft Graph Explorer](https://developer.microsoft.com/en-us/graph/graph-explorer)
+2. Use the Microsoft Authentication Library (MSAL) in a separate application
+3. Use the [Microsoft OAuth Authorization flow](https://learn.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-auth-code-flow)
+
+For production use, you should implement a proper OAuth flow with refresh tokens.
 
 ### 3. Configure environment variables
 
@@ -43,14 +43,16 @@ Copy the example environment file and update it with your Microsoft Graph API cr
 cp .env.example .env
 ```
 
-Edit the `.env` file with your actual credentials:
+Edit the `.env` file with your access token:
 
 ```
-TENANT_ID=your-tenant-id
-CLIENT_ID=your-client-id
-CLIENT_SECRET=your-client-secret
+ACCESS_TOKEN=your-access-token-here
+REFRESH_TOKEN=your-refresh-token-here-if-available
+TOKEN_EXPIRY=2025-02-28T12:00:00.000Z
 PORT=3000
 ```
+
+Alternatively, you can leave the `.env` file empty and use the web interface to enter your access token after starting the application.
 
 ### 4. Build and start the Docker container
 
@@ -74,6 +76,17 @@ Email metrics are stored in a JSON file at `./data/email-stats.json`. This file 
 
 You can update the `.env` file at any time without restarting the container. The application will automatically detect changes and reload the configuration.
 
+### Token Management
+
+The web interface includes a token management section where you can:
+
+1. Enter a new access token
+2. Provide a refresh token (if available)
+3. Set token expiration time
+4. View token status and expiration
+
+Tokens can be updated through this interface without needing to modify the `.env` file directly.
+
 ## How It Works
 
 - Hourly job: Counts emails received today and updates the stats
@@ -87,8 +100,10 @@ You can modify the scheduled job timing by editing the cron expressions in `src/
 ## Troubleshooting
 
 - Check the container logs: `docker-compose logs`
-- Verify your Microsoft Graph API credentials
-- Ensure the application has proper permissions to access the mailbox
+- Verify your Microsoft Graph API access token is valid and not expired
+- Check the token status in the web interface
+- Ensure the access token has Mail.Read permissions
+- If using refresh tokens, ensure the token endpoint is configured correctly in the graph.js service file
 
 ## License
 

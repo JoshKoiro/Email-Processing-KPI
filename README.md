@@ -93,3 +93,15 @@ You can modify the scheduled job timing by editing the cron expressions in `src/
 ## License
 
 MIT
+
+## Initial Prompt
+(using Claude 3.7)
+*I would like you to help me create a program that can take my emails via the Microsoft graph api and look at how many I've received over the course of a day and track it over time. Additionally, I would like the application to also track how many emails are in my inbox at the end of the day (Midnight). I would like this information to be stored as a JSON file that is continuously appended to.*
+
+*Build this application as a node js express server that runs inside a docker container. There should be a web interface that allows the user to view the statistics as a graph (showing how many emails are received over the course of each day, along with another graph that shows how many are left in the inbox at the end of a day.*
+
+*Also make it so that the .env file that contains the graph API key can be dynamically updated without having to restart the docker container.*
+
+*The point of this application is for me to measure the efficiency of processing emails based on changes to how I'm utilizing email management tools. This application is designed to be able to measure the performance of those tools.*
+
+*Please ask any questions if anything in these instructions are ambiguous or doesn't make sense. Think this through step by step and give me high quality code that is readable and understandable.*

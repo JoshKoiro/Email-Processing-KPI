@@ -14,6 +14,19 @@ const router = express.Router();
 router.get('/stats', async (req, res) => {
   try {
     const stats = await getAllEmailStats();
+    
+    // Log what's in the stats to help with debugging
+    console.log('API /stats: Retrieved stats with length:', stats.length);
+    
+    // Check if tasks count is present in the data
+    const hasTasks = stats.some(day => day.tasksCountAtMidnight !== undefined);
+    console.log('API /stats: Data contains tasks count?', hasTasks);
+    
+    if (stats.length > 0) {
+      // Log the most recent entry to verify data structure
+      console.log('API /stats: Most recent entry:', JSON.stringify(stats[0]));
+    }
+    
     res.json({ success: true, data: stats });
   } catch (error) {
     console.error('Error getting email stats:', error);
@@ -53,12 +66,29 @@ router.post('/update', async (req, res) => {
     
     if (type === 'midnight') {
       const { updateMidnightInboxCount } = require('../services/graph');
+      
+      // Before update, log what's currently in storage
+      const { getAllEmailStats } = require('../services/storage');
+      const beforeStats = await getAllEmailStats();
+      console.log('Current stats before update:', JSON.stringify(beforeStats[0] || {}));
+      
+      // Perform the update
       success = await updateMidnightInboxCount();
       
+      // After update, check what was saved
+      const afterStats = await getAllEmailStats();
+      console.log('Stats after update:', JSON.stringify(afterStats[0] || {}));
+      
       if (success) {
+        // Verify that tasks count was saved
+        const todayEntry = afterStats.find(day => day.date === new Date().toISOString().split('T')[0]);
+        const tasksCountSaved = todayEntry && todayEntry.tasksCountAtMidnight !== undefined;
+        
         res.json({ 
           success: true, 
-          message: 'Manual update of midnight counts (inbox and tasks) successful' 
+          message: 'Manual update of midnight counts (inbox and tasks) successful',
+          tasksCountSaved,
+          todayStats: todayEntry || {}
         });
       } else {
         res.status(500).json({ 

@@ -521,6 +521,9 @@ const updateMidnightInboxCount = async () => {
     // Get current tasks count (flagged emails)
     const tasksCount = await getTasksCount();
     
+    // Log what we're about to save
+    console.log(`Updating midnight counts: inboxCount=${inboxCount}, tasksCount=${tasksCount}`);
+    
     // Save to storage
     await saveEmailStats({
       date: new Date().toISOString().split('T')[0],

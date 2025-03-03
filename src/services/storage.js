@@ -66,6 +66,10 @@ const saveEmailStats = async (stats) => {
         data.dailyStats[todayIndex].emailsReceived = stats.emailsReceived;
       } else if (stats.type === 'midnight') {
         data.dailyStats[todayIndex].inboxCountAtMidnight = stats.inboxCountAtMidnight;
+        // Make sure we capture tasks count properly
+        if (stats.tasksCountAtMidnight !== undefined) {
+          data.dailyStats[todayIndex].tasksCountAtMidnight = stats.tasksCountAtMidnight;
+        }
       }
     } else {
       // Create new entry
@@ -77,6 +81,10 @@ const saveEmailStats = async (stats) => {
         newEntry.emailsReceived = stats.emailsReceived;
       } else if (stats.type === 'midnight') {
         newEntry.inboxCountAtMidnight = stats.inboxCountAtMidnight;
+        // Make sure we capture tasks count properly
+        if (stats.tasksCountAtMidnight !== undefined) {
+          newEntry.tasksCountAtMidnight = stats.tasksCountAtMidnight;
+        }
       }
       
       data.dailyStats.push(newEntry);
@@ -87,6 +95,14 @@ const saveEmailStats = async (stats) => {
     
     // Save updated data
     await saveData(data);
+    
+    // Log what was saved, including tasks count if applicable
+    if (stats.type === 'midnight' && stats.tasksCountAtMidnight !== undefined) {
+      console.log(`Saved stats for ${stats.date}: inboxCount=${stats.inboxCountAtMidnight}, tasksCount=${stats.tasksCountAtMidnight}`);
+    } else {
+      console.log(`Saved stats for ${stats.date}: ${JSON.stringify(stats)}`);
+    }
+    
     return true;
   } catch (error) {
     console.error('Error saving email stats:', error);

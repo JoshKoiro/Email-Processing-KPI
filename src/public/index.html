@@ -148,8 +148,11 @@
             <h5>Actions</h5>
           </div>
           <div class="card-body">
-            <button id="updateDailyButton" class="btn btn-outline-primary mb-2">Update Daily Stats Now</button>
+            <button id="updateDailyButton" class="btn btn-outline-primary mb-2 me-2">Update Daily Stats Now</button>
             <button id="updateMidnightButton" class="btn btn-outline-secondary mb-2">Update Midnight Count Now</button>
+            <div class="mt-3">
+              <button id="debugTasksButton" class="btn btn-sm btn-outline-info">Debug Tasks Count</button>
+            </div>
             <p class="mt-3 text-muted">Stats are automatically updated hourly. The midnight inbox count is updated at 12:00 AM.</p>
           </div>
         </div>
@@ -276,6 +279,17 @@
         const data = await response.json();
         
         if (data.success) {
+          console.log(`Loaded ${data.data.length} stats records from server`);
+          
+          // Check if we have any tasks count data
+          const hasTasks = data.data.some(day => day.tasksCountAtMidnight !== undefined);
+          console.log('Data contains tasks count?', hasTasks);
+          
+          // If we have data, log a sample to verify structure
+          if (data.data.length > 0) {
+            console.log('Sample data:', JSON.stringify(data.data[0]));
+          }
+          
           updateCharts(data.data);
           calculateEfficiencyMetrics(data.data);
         } else {
@@ -307,6 +321,9 @@
     
     // Update charts with data
     function updateCharts(stats) {
+      // Log incoming data to debug
+      console.log('Updating charts with data from server, sample stat:', stats.length > 0 ? JSON.stringify(stats[0]) : 'No data');
+      
       // Filter by date range if not "all"
       let filteredStats = stats;
       if (dateRange !== 'all') {
@@ -323,6 +340,15 @@
       const emailsReceived = filteredStats.map(stat => stat.emailsReceived || 0);
       const inboxCounts = filteredStats.map(stat => stat.inboxCountAtMidnight || 0);
       const tasksCounts = filteredStats.map(stat => stat.tasksCountAtMidnight || 0);
+      
+      // Log to debug
+      console.log('Dates:', dates);
+      console.log('Inbox counts:', inboxCounts);
+      console.log('Tasks counts:', tasksCounts);
+      
+      // Check if we have task data
+      const hasTaskData = tasksCounts.some(count => count > 0);
+      console.log('Has task data?', hasTaskData);
       
       // Update emails received chart
       emailsReceivedChart.data.labels = dates;
@@ -529,6 +555,53 @@
       
       document.getElementById('updateMidnightButton').addEventListener('click', () => {
         manualUpdate('midnight');
+      });
+      
+      // Debug tasks button
+      document.getElementById('debugTasksButton').addEventListener('click', async () => {
+        try {
+          // First get current task count
+          const response = await fetch('/api/current');
+          const data = await response.json();
+          
+          if (data.success) {
+            const tasksCount = data.data.tasksCount;
+            console.log('Current tasks count:', tasksCount);
+            
+            // Get current stats
+            const statsResponse = await fetch('/api/stats');
+            const statsData = await statsResponse.json();
+            
+            if (statsData.success) {
+              // Find today's entry
+              const today = new Date().toISOString().split('T')[0];
+              const todayEntry = statsData.data.find(day => day.date === today);
+              
+              console.log('Today entry in stats:', todayEntry);
+              
+              // Force an update of midnight count
+              const updateResponse = await fetch('/api/update', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ type: 'midnight' })
+              });
+              
+              const updateResult = await updateResponse.json();
+              console.log('Update result:', updateResult);
+              
+              // Reload stats
+              await loadStats();
+              await loadCurrentCounts();
+              
+              alert(`Debug completed. Current tasks count: ${tasksCount}. Check console for details.`);
+            }
+          }
+        } catch (error) {
+          console.error('Error during debug:', error);
+          alert('Debug failed. See console for details.');
+        }
       });
       
       // Auto-refresh every 5 minutes

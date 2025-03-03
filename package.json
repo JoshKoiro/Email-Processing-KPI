@@ -4,20 +4,22 @@
     "description": "Email tracking application using Microsoft Graph API",
     "main": "src/app.js",
     "scripts": {
-      "start": "node src/app.js",
-      "dev": "nodemon src/app.js"
+        "start": "node src/app.js",
+        "dev": "nodemon src/app.js",
+        "yeet": "node node_modules/code-context-yeeter/yeetCode.js"
     },
     "dependencies": {
-      "@azure/identity": "^2.0.5",
-      "@microsoft/microsoft-graph-client": "^3.0.2",
-      "cors": "^2.8.5",
-      "dotenv": "^16.0.3",
-      "express": "^4.18.2",
-      "isomorphic-fetch": "^3.0.0",
-      "morgan": "^1.10.0",
-      "node-cron": "^3.0.0"
+        "@azure/identity": "^2.0.5",
+        "@microsoft/microsoft-graph-client": "^3.0.2",
+        "code-context-yeeter": "github:JoshKoiro/code-context-yeeter",
+        "cors": "^2.8.5",
+        "dotenv": "^16.0.3",
+        "express": "^4.18.2",
+        "isomorphic-fetch": "^3.0.0",
+        "morgan": "^1.10.0",
+        "node-cron": "^3.0.0"
     },
     "devDependencies": {
-      "nodemon": "^2.0.20"
+        "nodemon": "^2.0.20"
     }
-  }
+}
